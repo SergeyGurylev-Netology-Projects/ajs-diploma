@@ -1,0 +1,4 @@
+dist
+__test__
+babel.config.js
+jest.config.js
