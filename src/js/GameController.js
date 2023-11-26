@@ -1,5 +1,4 @@
 import themes from './themes';
-import characterClasses from './characterClasses';
 import { generateTeam } from './generators';
 import Bowman from './characters/Bowman';
 import Swordsman from './characters/Swordsman';
@@ -10,7 +9,6 @@ import Daemon from './characters/Daemon';
 import PositionedCharacter from './PositionedCharacter';
 import GamePlay from './GamePlay';
 import GameState from './GameState';
-import Team from './Team';
 
 export default class GameController {
   constructor(gamePlay, stateService) {
@@ -26,7 +24,6 @@ export default class GameController {
     this.maxLevel = 4;
     this.currentLevel = 1;
     this.characterCount = 2;
-    // this.characterCount = Math.min(this.characterCount, this.gamePlay.boardSize * 2);
     this.teamPlayer = undefined;
     this.teamAI = undefined;
     this.positions = [];
@@ -43,9 +40,9 @@ export default class GameController {
     this.gamePlay.addCellClickListener(this.onCellClick.bind(this));
     this.gamePlay.addCellEnterListener(this.onCellEnter.bind(this));
     this.gamePlay.addCellLeaveListener(this.onCellLeave.bind(this));
-    this.gamePlay.addNewGameListener(this.onNewGameClick.bind(this));
-    this.gamePlay.addSaveGameListener(this.onSaveGameClick.bind(this));
-    this.gamePlay.addLoadGameListener(this.onLoadGameClick.bind(this));
+    this.gamePlay.addNewGameListener(GameState.onNewGameClick.bind(this));
+    this.gamePlay.addSaveGameListener(GameState.onSaveGameClick.bind(this));
+    this.gamePlay.addLoadGameListener(GameState.onLoadGameClick.bind(this));
   }
 
   makeCharacters() {
@@ -53,10 +50,13 @@ export default class GameController {
       const newTeam = generateTeam(
         [Bowman, Swordsman, Magician],
         this.currentLevel,
-        this.characterCount - this.teamPlayer.participants.length,
+        this.characterCount - this.teamPlayer.length(),
       );
 
-      this.teamPlayer.participants.forEach(el => newTeam.add(el));
+      for (const character of this.teamPlayer) {
+        newTeam.add(character);
+      }
+
       this.teamPlayer = newTeam;
     } else {
       this.teamPlayer = generateTeam(
@@ -74,17 +74,16 @@ export default class GameController {
     let hindex;
 
     [this.teamPlayer, this.teamAI].forEach((team, teamIndex) => {
-      for (let i = 0; i < team.participants.length;) {
-        vindex = Math.trunc(Math.random() * this.gamePlay.boardSize);
-        hindex = Math.trunc(Math.random() * 2);
-        index = vindex
-          * this.gamePlay.boardSize
-          + (teamIndex === 0 ? hindex : this.gamePlay.boardSize - hindex - 1);
+      for (const character of team) {
+        do {
+          vindex = Math.trunc(Math.random() * this.gamePlay.boardSize);
+          hindex = Math.trunc(Math.random() * 2);
+          index = vindex
+            * this.gamePlay.boardSize
+            + (teamIndex === 0 ? hindex : this.gamePlay.boardSize - hindex - 1);
+        } while (this.getCharacterByPosition(index));
 
-        if (!this.getCharacterByPosition(index)) {
-          this.positions.push(new PositionedCharacter(team.participants[i], index));
-          i += 1;
-        }
+        this.positions.push(new PositionedCharacter(character, index));
       }
     });
   }
@@ -153,10 +152,10 @@ export default class GameController {
         this.turnAI();
       }
 
-      if (!this.teamPlayer.participants.length) {
+      if (!this.teamPlayer.length()) {
         // Game over
         this.gameOver = true;
-      } else if (!this.teamAI.participants.length) {
+      } else if (!this.teamAI.length()) {
         this.levelUp();
       }
     });
@@ -169,7 +168,9 @@ export default class GameController {
     } else {
       this.currentLevel += 1;
       this.characterCount += 1;
-      this.teamPlayer.participants.forEach(el => el.levelUp());
+      for (const character of this.teamPlayer) {
+        character.levelUp();
+      }
 
       this.gamePlay.drawUi(Object.keys(themes)[this.currentLevel - 1]);
       this.makeCharacters();
@@ -179,12 +180,12 @@ export default class GameController {
   }
 
   turnAI() {
-    if (!this.teamAI.participants.length) {
+    if (!this.teamAI.length()) {
       return;
     }
 
-    const attacker = this.teamAI.participants.reduce((a, b) => (a.attack > b.attack ? a : b));
-    const target = this.teamPlayer.participants.reduce((a, b) => (a.attack > b.attack ? a : b));
+    const attacker = this.teamAI.getStrongest();
+    const target = this.teamPlayer.getStrongest();
     const attackerPos = this.positions.find(el => el.character === attacker);
     const targetPos = this.positions.find(el => el.character === target);
 
@@ -318,47 +319,5 @@ export default class GameController {
     if (this.selectedCell !== index) {
       this.gamePlay.deselectCell(index);
     }
-  }
-
-  onNewGameClick() {
-    this.init();
-  }
-
-  onSaveGameClick() {
-    this.stateService.save(GameState.from(this));
-  }
-
-  onLoadGameClick() {
-    let restoredObject;
-    try {
-      restoredObject = this.stateService.load();
-    } catch (e) {
-      GamePlay.showError(e.message);
-      return;
-    }
-
-    this.maxLevel = restoredObject.maxLevel;
-    this.currentLevel = restoredObject.currentLevel;
-    this.characterCount = restoredObject.characterCount;
-    this.teamPlayer = new Team();
-    this.teamAI = new Team();
-    this.positions = [];
-    this.selectedCell = undefined;
-    this.atimate = false;
-    this.gameOver = false;
-
-    restoredObject.characters.forEach(el => {
-      const character = new characterClasses[el.character.type](1);
-      for (const key in el.character) {
-        if (Object.hasOwn(el.character, key)) {
-          character[key] = el.character[key];
-        }
-      }
-      this[el.teamName].add(character);
-      this.positions.push(new PositionedCharacter(character, el.position));
-    });
-
-    this.gamePlay.drawUi(Object.keys(themes)[this.currentLevel - 1]);
-    this.gamePlay.redrawPositions(this.positions);
   }
 }

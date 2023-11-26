@@ -13,22 +13,50 @@
  * */
 export default class Team {
   // TODO: write your logic here
+  #participants;
+
   constructor() {
-    this.participants = [];
+    this.#participants = new Set();
+    this[Symbol.iterator] = this.iterator;
+  }
+
+  iterator() {
+    let current = 0;
+    const participants = [...this.#participants];
+
+    return {
+      next() {
+        if (current < participants.length) {
+          return {
+            done: false,
+            value: participants[current++],
+          };
+        }
+
+        return {
+          done: true,
+        };
+      },
+    };
+  }
+
+  length() {
+    return this.#participants.size;
   }
 
   add(character) {
-    this.participants.push(character);
+    this.#participants.add(character);
   }
 
   delete(character) {
-    const index = this.participants.findIndex(el => character === el);
-    if (index >= 0) {
-      this.participants.splice(index, 1);
-    }
+    this.#participants.delete(character);
   }
 
   includes(character) {
-    return this.participants.includes(character);
+    return this.#participants.has(character);
+  }
+
+  getStrongest() {
+    return [...this.#participants].reduce((a, b) => (a.attack > b.attack ? a : b));
   }
 }
